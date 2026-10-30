@@ -109,7 +109,7 @@ export function createHat() {
     const over = Math.max(0, s.pull - 1);
     const flipT = smooth(p);
     const redH = lerp(0.94, -1, flipT) - over * 0.5;
-    const redR = lerp(0.965, 1, flipT);
+    const redR = lerp(0.93, 1, flipT);
     // 途中はくしゃっとする
     const crumple = Math.sin(Math.PI * p) * 0.12 + s.wrinkle * 0.12;
 
@@ -122,10 +122,13 @@ export function createHat() {
         const st = Math.sin(th);
         const ct = Math.cos(th);
         const k = (i * (SEG_P + 1) + j) * 3;
-        const ww = 1 + s.wrinkle * 0.05 * Math.sin(phi * 7 + th * 5) * st;
+        // 白のしわは外側へだけ、赤のくしゃっは内側へだけ（赤が白をつきぬけないように）
+        const ww = 1 + s.wrinkle * 0.05 * (0.5 + 0.5 * Math.sin(phi * 7 + th * 5)) * st;
         put(white.pos, k, st * cx * ww, ct * BALL_H * ww, st * cz * ww);
-        const n = 1 + crumple * Math.sin(phi * 9 + th * 6) * st;
-        const h = redH * BALL_H * (1 + s.skew * 0.5 * st * cx) * n;
+        const n = 1 - crumple * (0.5 + 0.5 * Math.sin(phi * 9 + th * 6)) * st;
+        let sk = 1 + s.skew * 0.5 * st * cx;
+        if (redH > 0) sk = Math.min(sk, 1);
+        const h = redH * BALL_H * sk * n;
         put(red.pos, k, st * cx * redR * n, ct * h, st * cz * redR * n);
       }
     }
