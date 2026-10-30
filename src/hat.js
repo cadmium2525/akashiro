@@ -15,12 +15,12 @@ const GRAY = 0x8c9097;
 
 const U_SEG = 32;
 const V_SEG = 16;
-const HALF_LEN = 0.82; // トサカの前後の長さの半分
 const DOME_H = 0.82;   // ドームの高さ（半径1を縦につぶした値）
 
 export const IDEAL = { fold: 1, pinch: 1, twist: 0, wrinkle: 0, band: 0.9, bandTilt: 0 };
 
 const clamp = (v, a, b) => Math.min(b, Math.max(a, v));
+const lerp = (a, b, t) => a + (b - a) * t;
 
 function domeY(x, z) {
   const r2 = 1 - x * x - z * z;
@@ -36,34 +36,31 @@ function crest(u) {
 export function createHat() {
   const group = new THREE.Group();
 
+  // 赤白帽子はリバーシブル：表（外側）が白、裏（内側）が赤。
   const outerMat = new THREE.MeshStandardMaterial({ color: WHITE, roughness: 0.92 });
   const innerMat = new THREE.MeshStandardMaterial({ color: RED, roughness: 0.85, side: THREE.BackSide });
-  const finMat = new THREE.MeshStandardMaterial({ color: RED, roughness: 0.8, side: THREE.DoubleSide });
+  const flapOuterMat = new THREE.MeshStandardMaterial({ color: WHITE, roughness: 0.92, side: THREE.BackSide });
+  const flapInnerMat = new THREE.MeshStandardMaterial({ color: RED, roughness: 0.85, side: THREE.FrontSide });
   const bandMat = new THREE.MeshStandardMaterial({ color: GRAY, roughness: 0.55 });
-  const seamMat = new THREE.MeshStandardMaterial({ color: 0xdedbd2, roughness: 1 });
 
-  const domeGeo = new THREE.SphereGeometry(1, 48, 20, 0, Math.PI * 2, 0, Math.PI / 2);
+  // 動かない半分（-x 側）のドーム
+  const domeGeo = new THREE.SphereGeometry(1, 32, 20, -Math.PI / 2, Math.PI, 0, Math.PI / 2);
   const dome = new THREE.Mesh(domeGeo, outerMat);
   dome.scale.y = DOME_H;
   dome.castShadow = true;
   dome.receiveShadow = true;
   const inner = new THREE.Mesh(domeGeo, innerMat);
-  inner.scale.set(0.975, DOME_H * 0.975, 0.975);
-  const hem = new THREE.Mesh(new THREE.TorusGeometry(1.0, 0.035, 8, 72), outerMat);
-  hem.rotation.x = Math.PI / 2;
+  inner.scale.set(0.985, DOME_H * 0.985, 0.985);
+  const hemGeo = new THREE.TorusGeometry(1.0, 0.03, 8, 40, Math.PI);
+  hemGeo.rotateX(Math.PI / 2);
+  hemGeo.rotateY(-Math.PI / 2);
+  const hem = new THREE.Mesh(hemGeo, outerMat);
   hem.position.y = 0.02;
   hem.castShadow = true;
   group.add(dome, inner, hem);
 
-  // 縫い目（布っぽさ）
-  for (let k = 0; k < 3; k++) {
-    const seam = new THREE.Mesh(new THREE.TorusGeometry(1.004, 0.008, 4, 48, Math.PI), seamMat);
-    seam.scale.y = DOME_H;
-    seam.rotation.y = (k / 3) * Math.PI + Math.PI / 6;
-    group.add(seam);
-  }
-
-  // トサカ（赤い部分）。ヒンジはドームのてっぺんを前後(z)に走る線。
+  // 折り返す半分（+x 側）。fold=0 ではドームの半分そのもので、
+  // 折り上げると裏返って赤い面が外に出たトサカになる。
   const finGeo = new THREE.BufferGeometry();
   const vCount = (U_SEG + 1) * (V_SEG + 1);
   const finPos = new Float32Array(vCount * 3);
@@ -73,14 +70,20 @@ export function createHat() {
     for (let j = 0; j < V_SEG; j++) {
       const a = i * (V_SEG + 1) + j;
       const b = a + V_SEG + 1;
-      idx.push(a, b, a + 1, b, b + 1, a + 1);
+      idx.push(a, a + 1, b, b, a + 1, b + 1);
     }
   }
   finGeo.setIndex(idx);
-  const fin = new THREE.Mesh(finGeo, finMat);
-  fin.castShadow = true;
-  fin.receiveShadow = true;
-  group.add(fin);
+  const finGroup = new THREE.Group();
+  const finOuter = new THREE.Mesh(finGeo, flapOuterMat);
+  const finInner = new THREE.Mesh(finGeo, flapInnerMat);
+  finOuter.castShadow = true;
+  finOuter.receiveShadow = true;
+  finInner.receiveShadow = true;
+  const edge = new THREE.Mesh(new THREE.BufferGeometry(), outerMat);
+  edge.castShadow = true;
+  finGroup.add(finOuter, finInner, edge);
+  group.add(finGroup);
 
   // ゴムひも
   const band = new THREE.Mesh(new THREE.BufferGeometry(), bandMat);
@@ -94,39 +97,50 @@ export function createHat() {
     const { fold, pinch, wrinkle } = state;
     const pk = clamp(pinch, 0, 1);
     const over = Math.max(0, pinch - 1);
-    const th = -0.2 + fold * (Math.PI / 2 + 0.2);
-    // つまむほどまっすぐ（曲率0）に。つまみすぎ・しわで少し曲がる。
-    let c = (1 - pk) * 0.8 + over * 0.8 + wrinkle * 0.25;
-    if (Math.abs(c) < 1e-4) c = 1e-4;
+    // m: ドームの形 → トサカの形 への変形度合い
+    const f1 = clamp(fold, 0, 1);
+    const m = f1 * f1 * (3 - 2 * f1);
+    const th = fold * (Math.PI / 2);
+    // トサカ状態の曲がり：つまむほどまっすぐ。つまみすぎ・しわで少し曲がる。
+    const cFin = (1 - pk) * 0.8 + over * 0.8 + wrinkle * 0.25;
     const H = 0.6 + 0.4 * pk - over * 0.25;
+    const ys = lerp(DOME_H, 1, m);
+    const edgePts = [];
     for (let i = 0; i <= U_SEG; i++) {
       const u = -1 + (2 * i) / U_SEG;
-      const z = u * HALF_LEN;
-      const hy = domeY(0, z);
-      const prof = (1 - pk) * Math.sqrt(Math.max(0, 1 - u * u)) * 0.85 + pk * crest(u);
-      const h = H * prof;
+      const z = u * 0.995;
+      const r = Math.sqrt(Math.max(0.0001, 1 - z * z));
+      const hy = DOME_H * r;
+      const prof = (1 - pk) * r * 0.85 + pk * crest(u);
+      const len = lerp((Math.PI / 2) * r, H * prof, m);
+      let c = lerp(1 / r, cFin, m);
+      if (Math.abs(c) < 1e-4) c = 1e-4;
       for (let j = 0; j <= V_SEG; j++) {
         const s = j / V_SEG;
-        const v = -0.05 + s * (h + 0.05);
+        const v = s * len;
         const ang = th - c * v;
         let x = (Math.sin(th) - Math.sin(ang)) / c;
-        let y = hy + (Math.cos(ang) - Math.cos(th)) / c;
+        let y = hy + ((Math.cos(ang) - Math.cos(th)) / c) * ys;
         // しわ：面の法線方向に波打たせる
-        const wr = wrinkle * 0.08 * s * (Math.sin(u * 13 + s * 5) + 0.5 * Math.sin(u * 29 - s * 9));
+        const wr = wrinkle * 0.08 * s * (0.3 + 0.7 * m) * (Math.sin(u * 13 + s * 5) + 0.5 * Math.sin(u * 29 - s * 9));
         x += -Math.sin(ang) * wr;
         y += Math.cos(ang) * wr;
-        // ドームや机にめりこまないように
-        y = Math.max(y, domeY(x, z) + 0.012, 0.012);
+        // 机や、反対側に倒れたときは残りの半分にめりこまないように
+        if (x < 0) y = Math.max(y, domeY(x, z) + 0.012);
+        y = Math.max(y, 0.012);
         const k = (i * (V_SEG + 1) + j) * 3;
         finPos[k] = x;
         finPos[k + 1] = y;
         finPos[k + 2] = z;
+        if (j === V_SEG) edgePts.push(new THREE.Vector3(x, y, z));
       }
     }
     finGeo.attributes.position.needsUpdate = true;
     finGeo.computeVertexNormals();
     finGeo.computeBoundingSphere();
-    fin.rotation.y = state.twist;
+    edge.geometry.dispose();
+    edge.geometry = new THREE.TubeGeometry(new THREE.CatmullRomCurve3(edgePts), 48, 0.03, 6, false);
+    finGroup.rotation.y = state.twist * m;
   }
 
   function buildBand() {

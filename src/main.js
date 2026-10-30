@@ -116,8 +116,8 @@ let confetti = null;
 const VIEWS = {
   table: { pos: new THREE.Vector3(0, 3.0, 5.0), look: new THREE.Vector3(0, 0.5, 0), halfW: 1.75, minFov: 44 },
   put: { pos: new THREE.Vector3(0, 4.4, 5.6), look: new THREE.Vector3(0, 0.5, -1.3), halfW: 2.0, minFov: 46 },
-  kid: { pos: new THREE.Vector3(1.6, 0.9, 3.4), look: new THREE.Vector3(-0.2, 0.0, -2.6), halfW: 2.3, minFov: 42 },
-  result: { pos: new THREE.Vector3(1.6, 0.9, 3.4), look: new THREE.Vector3(-0.2, -1.7, -2.6), halfW: 2.6, minFov: 50 },
+  kid: { pos: new THREE.Vector3(1.3, 1.2, 3.4), look: new THREE.Vector3(-0.2, 0.0, -2.6), halfW: 2.3, minFov: 42 },
+  result: { pos: new THREE.Vector3(1.3, 1.2, 3.4), look: new THREE.Vector3(-0.2, -1.7, -2.6), halfW: 2.6, minFov: 50 },
 };
 const cam = {
   from: VIEWS.table, to: VIEWS.table, t: 1, dur: 1,
@@ -201,7 +201,7 @@ function resetGame() {
 
   scene.attach(hat.group);
   hat.group.position.set(0, 0, 0);
-  hat.group.rotation.set(0, Math.PI / 2, 0);
+  hat.group.rotation.set(0, -Math.PI / 2, 0);
   hat.group.scale.setScalar(1);
   hat.reset({ fold: 0, pinch: 0, twist: tw, wrinkle: G.baseWrinkle, band: 0, bandTilt: 0 });
 
@@ -598,7 +598,7 @@ function makeBeam() {
     new THREE.MeshBasicMaterial({ color: 0xe8f8ff }),
   );
   const glow = new THREE.Mesh(
-    new THREE.CylinderGeometry(0.3, 0.3, 1, 16, 1, true),
+    new THREE.CylinderGeometry(0.22, 0.22, 1, 16, 1, true),
     new THREE.MeshBasicMaterial({ color: 0x7fd4ff, transparent: true, opacity: 0.55, blending: THREE.AdditiveBlending, depthWrite: false }),
   );
   core.position.y = glow.position.y = 0.5;
@@ -638,7 +638,7 @@ function updateFx(dt, t) {
     const E = kid.points.rE;
     const Hd = kid.points.rH;
     const origin = E.clone().lerp(Hd, 0.55);
-    const dir = new THREE.Vector3(-0.35, 0.03, 1).normalize();
+    const dir = new THREE.Vector3(-0.9, 0.03, 1).normalize();
     beam.position.copy(origin).addScaledVector(dir, 0.1);
     beam.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), dir);
     beam.scale.set(1 + Math.sin(t * 50) * 0.15, ud.len, 1 + Math.sin(t * 50) * 0.15);
@@ -666,7 +666,7 @@ function frame() {
 
   switch (G.mode) {
     case 'title':
-      hat.group.rotation.y = Math.PI / 2 + Math.sin(t * 0.8) * 0.4;
+      hat.group.rotation.y = -Math.PI / 2 + Math.sin(t * 0.8) * 0.4;
       break;
     case 'intro':
       if (G.modeT > 1.0) setMode('play');
@@ -688,7 +688,7 @@ function frame() {
     case 'reveal': {
       const k = ease(clamp(G.modeT / 1.2, 0, 1));
       desk.position.x = lerp(0, 9, k);
-      kid.root.rotation.y = lerp(0, -0.35, k);
+      kid.root.rotation.y = lerp(0, -0.2, k);
       if (G.modeT > 1.3) startPose();
       break;
     }
@@ -736,7 +736,7 @@ function renderSample(t) {
   const y = window.innerHeight - r.bottom + b;
   const w = r.width - b * 2;
   const h = r.height - b * 2;
-  sampleHat.group.rotation.y = Math.PI / 2 + Math.sin(t * 0.9) * 0.7;
+  sampleHat.group.rotation.y = -Math.PI / 2 + Math.sin(t * 0.9) * 0.7;
   sampleCam.aspect = w / h;
   sampleCam.updateProjectionMatrix();
   renderer.setScissorTest(true);
