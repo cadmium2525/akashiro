@@ -6,7 +6,7 @@ import { sfx, initAudio } from './audio.js';
 
 // ---------------------------------------------------------------------------
 // むずかしさ設定
-//   time  : 各ステップの制限時間（秒）[立てる, つまむ, ゴム, かぶせる]
+//   time  : 各ステップの制限時間（秒）[ひっぱる, まわす, ツバ, かぶせる]
 //   tol   : 判定のあまさ（大きいほどあまい）
 //   relax : 手をはなしている間に布がもどる速さ
 //   wobble: 勝手にゆれる強さ
@@ -18,24 +18,43 @@ const DIFFS = {
   hard:   { name: 'むずかしい', time: [7, 7, 7, 6],     tol: 0.7, relax: 0.2,  wobble: 0.3,  sens: 0.9 },
 };
 
+// hint: 左手・右手の矢印と、その向き（dx, dy）
 const PHASES = [
   {
-    key: 'fold', title: 'STEP 1　たてる', hint: 'up', handRest: [1.45, 0.25, 1.3],
-    desc: '両手で<b>上にスワイプ</b>！赤いところをまっすぐ立てよう',
+    key: 'pull', title: 'STEP 1　ひっぱる', handRest: [1.45, 1.0, 0.5],
+    hint: { L: ['←', -1, 0], R: ['→', 1, 0] },
+    desc: '左右に<b>外側へスワイプ</b>！内側の赤い布を引っぱり出して風船にしよう',
   },
   {
-    key: 'pinch', title: 'STEP 2　つまむ', hint: 'inward', handRest: [1.4, 0.7, 0.9],
-    desc: '左右から<b>内側にスワイプ</b>！とがらせてねじれをなおそう',
+    key: 'turn', title: 'STEP 2　まわす', handRest: [1.5, 0.9, 0.7],
+    hint: { L: ['↑', 0, -1], R: ['←', -1, 0] },
+    desc: '<b>上スワイプ</b>でツバを上に、<b>左スワイプ</b>で白を左・赤を右に向けよう',
   },
   {
-    key: 'band', title: 'STEP 3　ゴムをかける', hint: 'down', handRest: [1.4, 0.9, 1.0],
-    desc: '両手で<b>下にスワイプ</b>してゴムをかけよう。ひっぱりすぎ注意！',
+    key: 'brim', title: 'STEP 3　ツバをととのえる', handRest: [1.3, 1.6, 0.7],
+    hint: { L: ['→', 1, 0], R: ['←', -1, 0] },
+    desc: '左右から<b>内側にスワイプ</b>！ツバをピンととがらせよう',
   },
   {
-    key: 'put', title: 'STEP 4　かぶせる', hint: 'up', handRest: [1.6, 0.6, 1.8],
-    desc: '<b>上にスワイプ</b>して友だちにかぶせよう！',
+    key: 'put', title: 'STEP 4　かぶせる', handRest: [1.6, 0.6, 1.8],
+    hint: { L: ['↑', 0, -1], R: ['↑', 0, -1] },
+    desc: '<b>上にスワイプ</b>して、下から友だちの頭にかぶせよう！',
   },
 ];
+
+// 机の上の帽子は少しななめに置く（真正面だとツバが線にしか見えないため）
+const HAT_YAW = -0.45;
+
+// 頭にのせたときの位置と大きさ（頭のローカル座標）
+const HAT_ON_HEAD = { pos: new THREE.Vector3(0, 0.08, 0), scale: 0.9 };
+
+// 各ステップで帽子をもつ位置
+const HAT_POS = {
+  pull: new THREE.Vector3(0, 1.15, 0),
+  turn: new THREE.Vector3(0, 1.15, 0),
+  brim: new THREE.Vector3(0, 1.0, 0),
+  put: new THREE.Vector3(0, 0.6, 1.9),
+};
 
 const RANKS = [
   { min: 85, rank: 'S', pose: 'specium', name: '完ぺきウルトラマン', shout: 'シュワッチ!!', sub: 'スペシウム光線！' },
@@ -101,8 +120,8 @@ const sampleHat = createHat();
 sampleHat.reset({ ...IDEAL });
 sampleScene.add(sampleHat.group);
 const sampleCam = new THREE.PerspectiveCamera(32, 1, 0.1, 20);
-sampleCam.position.set(0, 1.6, 4.2);
-sampleCam.lookAt(0, 0.62, 0);
+sampleCam.position.set(0, 1.0, 5.2);
+sampleCam.lookAt(0, 0.4, 0);
 
 // エフェクト
 const fx = new THREE.Group();
@@ -114,8 +133,8 @@ let confetti = null;
 // カメラ
 // ---------------------------------------------------------------------------
 const VIEWS = {
-  table: { pos: new THREE.Vector3(0, 3.0, 5.0), look: new THREE.Vector3(0, 0.5, 0), halfW: 1.75, minFov: 44 },
-  put: { pos: new THREE.Vector3(0, 4.4, 5.6), look: new THREE.Vector3(0, 0.5, -1.3), halfW: 2.0, minFov: 46 },
+  table: { pos: new THREE.Vector3(0, 3.2, 5.2), look: new THREE.Vector3(0, 0.9, 0), halfW: 1.9, minFov: 44 },
+  put: { pos: new THREE.Vector3(0, 4.8, 5.9), look: new THREE.Vector3(0, 0.6, -1.2), halfW: 2.1, minFov: 48 },
   kid: { pos: new THREE.Vector3(1.3, 1.2, 3.4), look: new THREE.Vector3(-0.2, 0.0, -2.6), halfW: 2.3, minFov: 42 },
   result: { pos: new THREE.Vector3(1.3, 1.2, 3.4), look: new THREE.Vector3(-0.2, -1.7, -2.6), halfW: 2.6, minFov: 50 },
 };
@@ -176,7 +195,6 @@ const G = {
   timer: 0,
   scores: [0, 0, 0],
   crumple: 0,
-  snaps: 0,
   putAcc: 0,
   baseWrinkle: 0.3,
   seed: 0,
@@ -193,17 +211,19 @@ function resetGame() {
   G.phase = 0;
   G.scores = [0, 0, 0];
   G.crumple = 0;
-  G.snaps = 0;
   G.putAcc = 0;
   G.seed = Math.random() * 100;
   G.baseWrinkle = 0.25 + Math.random() * 0.15;
-  const tw = (0.12 + Math.random() * 0.14) * (Math.random() < 0.5 ? -1 : 1);
+  const rnd = (lo, hi) => (lo + Math.random() * (hi - lo)) * (Math.random() < 0.5 ? -1 : 1);
 
   scene.attach(hat.group);
-  hat.group.position.set(0, 0, 0);
-  hat.group.rotation.set(0, -Math.PI / 2, 0);
+  hat.group.position.set(0, 0.03, 0);
+  hat.group.rotation.set(0, HAT_YAW, 0);
   hat.group.scale.setScalar(1);
-  hat.reset({ fold: 0, pinch: 0, twist: tw, wrinkle: G.baseWrinkle, band: 0, bandTilt: 0 });
+  hat.reset({
+    pull: 0, skew: rnd(0.1, 0.2), tip: 0, turn: 0, pinch: 0, lean: rnd(0.12, 0.25),
+    wrinkle: G.baseWrinkle, worn: 0,
+  });
 
   desk.position.set(0, 0, 0);
   kid.root.visible = false;
@@ -239,9 +259,13 @@ function startPhase(i) {
   $('hud').classList.remove('hidden');
   $('phaseTitle').textContent = ph.title;
   $('phaseDesc').innerHTML = ph.desc;
-  $('hints').className = ph.hint;
-  $('hints').querySelector('.L').textContent = { up: '↑', down: '↓', inward: '→' }[ph.hint];
-  $('hints').querySelector('.R').textContent = { up: '↑', down: '↓', inward: '←' }[ph.hint];
+  for (const side of ['L', 'R']) {
+    const el = $('hints').querySelector(`.${side}`);
+    const [arrow, hx, hy] = ph.hint[side];
+    el.textContent = arrow;
+    el.style.setProperty('--dx', `${hx * 18}px`);
+    el.style.setProperty('--dy', `${hy * 18}px`);
+  }
   $('okBtn').textContent = ph.key === 'put' ? 'かぶせる！' : 'できた！';
   buildGauges();
   if (ph.key === 'put') {
@@ -260,14 +284,14 @@ function startPhase(i) {
 const sc = (err, width) => clamp(1 - err / width, 0, 1);
 function widths() {
   const t = G.diff.tol;
-  return { fold: 0.5 * t, pinch: 0.5 * t, twist: 0.4 * t, band: 0.35 * t, tilt: 0.35 * t };
+  return { pull: 0.45 * t, skew: 0.4 * t, tip: 0.4 * t, turn: 0.4 * t, pinch: 0.5 * t, lean: 0.4 * t };
 }
 function phaseScore(i) {
   const s = hat.state;
   const w = widths();
-  if (i === 0) return sc(Math.abs(s.fold - 1), w.fold);
-  if (i === 1) return 0.55 * sc(Math.abs(s.pinch - 1), w.pinch) + 0.45 * sc(Math.abs(s.twist), w.twist);
-  if (i === 2) return 0.6 * sc(Math.abs(s.band - IDEAL.band), w.band) + 0.4 * sc(Math.abs(s.bandTilt), w.tilt);
+  if (i === 0) return 0.6 * sc(Math.abs(s.pull - 1), w.pull) + 0.4 * sc(Math.abs(s.skew), w.skew);
+  if (i === 1) return 0.5 * sc(Math.abs(s.tip - 1), w.tip) + 0.5 * sc(Math.abs(s.turn - 1), w.turn);
+  if (i === 2) return 0.55 * sc(Math.abs(s.pinch - 1), w.pinch) + 0.45 * sc(Math.abs(s.lean), w.lean);
   return 1;
 }
 
@@ -279,14 +303,17 @@ function buildGauges() {
   const w = widths();
   const s = hat.state;
   const defs = {
-    fold: [{ label: '立ち具合', get: () => s.fold, min: 0, max: 1.5, target: 1, half: w.fold * 0.3, warn: 'たおれすぎ' }],
-    pinch: [
-      { label: 'とがり具合', get: () => s.pinch, min: 0, max: 1.6, target: 1, half: w.pinch * 0.3, warn: 'つまみすぎ' },
-      { label: 'ねじれ', get: () => s.twist, min: -0.8, max: 0.8, target: 0, half: w.twist * 0.3 },
+    pull: [
+      { label: 'ふくらみ', get: () => s.pull, min: 0, max: 1.5, target: 1, half: w.pull * 0.3, warn: 'のばしすぎ' },
+      { label: 'バランス', get: () => s.skew, min: -0.8, max: 0.8, target: 0, half: w.skew * 0.3 },
     ],
-    band: [
-      { label: 'ゴムのひっぱり', get: () => s.band, min: 0, max: 1.25, target: IDEAL.band, half: w.band * 0.3, danger: 1.2 },
-      { label: 'ゴムのかたむき', get: () => s.bandTilt, min: -0.8, max: 0.8, target: 0, half: w.tilt * 0.3 },
+    turn: [
+      { label: 'ツバの向き（たて）', get: () => s.tip, min: 0, max: 1.5, target: 1, half: w.tip * 0.3, warn: 'まわしすぎ' },
+      { label: '白赤の向き（よこ）', get: () => s.turn, min: -0.5, max: 1.5, target: 1, half: w.turn * 0.3, warn: 'まわしすぎ' },
+    ],
+    brim: [
+      { label: 'ピン度', get: () => s.pinch, min: 0, max: 1.6, target: 1, half: w.pinch * 0.3, warn: 'つまみすぎ' },
+      { label: 'かたむき', get: () => s.lean, min: -0.8, max: 0.8, target: 0, half: w.lean * 0.3 },
     ],
     put: [],
   }[PHASES[G.phase].key];
@@ -357,37 +384,26 @@ function onDrag(side, dx, dy) {
   const s = hat.state;
   const k = G.diff.sens;
   const key = PHASES[G.phase].key;
-  if (key === 'fold') {
-    s.fold = clamp(s.fold - dy * 2.4 * k, 0, 1.5);
-    if (s.fold > 1.3) G.crumple += Math.max(0, -dy) * 0.3;
-    if (Math.abs(dy) > 0.003) sfx.swipe(s.fold * 0.4);
-  } else if (key === 'pinch') {
+  if (key === 'pull') {
+    const outward = dx * side;
+    s.pull = clamp(s.pull + outward * 2.0 * k, 0, 1.5);
+    s.skew = clamp(s.skew + outward * 1.2 * k * side, -0.8, 0.8);
+    if (s.pull > 1.2 && outward > 0) G.crumple += outward * 0.3;
+    if (Math.abs(dx) > 0.003) sfx.swipe(s.pull * 0.4);
+  } else if (key === 'turn') {
+    s.tip = clamp(s.tip - dy * 2.2 * k, -0.3, 1.6);
+    s.turn = clamp(s.turn - dx * 2.2 * k, -0.6, 1.6);
+    if (Math.abs(dx) + Math.abs(dy) > 0.003) sfx.swipe((s.tip + s.turn) * 0.2);
+  } else if (key === 'brim') {
     const inward = dx * -side;
     s.pinch = clamp(s.pinch + inward * 2.2 * k, 0, 1.6);
-    s.twist = clamp(s.twist + inward * 1.4 * k * -side, -0.8, 0.8);
+    s.lean = clamp(s.lean + inward * 1.4 * k * -side, -0.8, 0.8);
     if (s.pinch > 1.2 && inward > 0) G.crumple += inward * 0.35;
     if (Math.abs(dx) > 0.003) sfx.swipe(s.pinch * 0.4);
-  } else if (key === 'band') {
-    s.band = Math.max(-0.1, s.band + dy * 1.8 * k);
-    s.bandTilt = clamp(s.bandTilt + dy * 1.1 * k * -side, -0.8, 0.8);
-    if (Math.abs(dy) > 0.003) sfx.swipe(s.band * 0.5);
-    if (s.band > 1.2) snapBand();
   } else if (key === 'put') {
     G.putAcc += -dy;
     if (G.putAcc > 0.12) putHat();
   }
-}
-
-function snapBand() {
-  const s = hat.state;
-  s.band = 0;
-  s.bandTilt *= 0.5;
-  G.snaps++;
-  sfx.snap();
-  cam.shake = 0.6;
-  if (navigator.vibrate) navigator.vibrate(80);
-  showBanner('パチン！', 'red', 700);
-  pointers.clear();
 }
 
 $('okBtn').addEventListener('click', () => {
@@ -434,15 +450,14 @@ function showResult() {
   $('rankName').textContent = r.name;
   $('total').innerHTML = `<b>${G.total}</b> 点（${G.diff.name}）`;
   const items = [
-    ['たてる', G.scores[0]],
-    ['つまむ', G.scores[1]],
-    ['ゴム', G.scores[2]],
+    ['ひっぱる', G.scores[0]],
+    ['まわす', G.scores[1]],
+    ['ツバ', G.scores[2]],
   ];
   let html = items.map(([n, v]) => `
     <div class="item"><span>${n}</span><div class="bar"><i style="width:${Math.round(v * 100)}%"></i></div><span>${Math.round(v * 100)}</span></div>`).join('');
   const notes = [];
   if (G.crumple > 0.02) notes.push(`しわしわ −${Math.round(Math.min(0.35, G.crumple) * 100)}%`);
-  if (G.snaps > 0) notes.push(`パチン ${G.snaps}回`);
   if (notes.length) html += `<div class="note">${notes.join('　')}</div>`;
   $('breakdown').innerHTML = html;
   $('result').classList.remove('hidden');
@@ -494,17 +509,18 @@ function updatePlay(dt, t) {
   const key = PHASES[G.phase].key;
   const touching = pointers.size > 0;
 
-  if (key === 'fold') {
-    if (!touching) s.fold = Math.max(0, s.fold - d.relax * dt * (0.5 + s.fold));
-    s.fold = clamp(s.fold + d.wobble * noise(t, G.seed) * dt * 0.6, 0, 1.5);
-  } else if (key === 'pinch') {
+  if (key === 'pull') {
+    // 手をはなすと赤い布が内側へもどろうとする
+    if (!touching) s.pull = Math.max(0, s.pull - d.relax * dt * (0.5 + s.pull));
+    s.skew = clamp(s.skew + d.wobble * noise(t, G.seed) * dt * 0.35, -0.8, 0.8);
+  } else if (key === 'turn') {
+    s.tip = clamp(s.tip + d.wobble * noise(t, G.seed + 3) * dt * 0.4, -0.3, 1.6);
+    s.turn = clamp(s.turn + d.wobble * noise(t, G.seed + 7) * dt * 0.4, -0.6, 1.6);
+  } else if (key === 'brim') {
     if (!touching) s.pinch = Math.max(0, s.pinch - d.relax * dt * 0.8);
-    s.twist = clamp(s.twist + d.wobble * noise(t, G.seed + 5) * dt * 0.35, -0.8, 0.8);
-  } else if (key === 'band') {
-    if (!touching) s.band = Math.max(0, s.band - d.relax * dt * 0.7);
-    s.bandTilt = clamp(s.bandTilt + d.wobble * noise(t, G.seed + 9) * dt * 0.3, -0.8, 0.8);
+    s.lean = clamp(s.lean + d.wobble * noise(t, G.seed + 5) * dt * 0.35, -0.8, 0.8);
   }
-  // しわ：つまむほどのびる。つまみすぎ・倒しすぎの「くしゃっ」は残る
+  // しわ：つまむほどのびる。のばしすぎ・つまみすぎの「くしゃっ」は残る
   s.wrinkle = G.baseWrinkle * (1 - clamp(s.pinch, 0, 1) * 0.85) + Math.min(0.6, G.crumple);
 
   const before = G.timer;
@@ -555,16 +571,18 @@ function updateFlight(dt) {
   const T = 0.95;
   const k = clamp(G.modeT / T, 0, 1);
   const e = ease(k);
-  const target = kid.head.localToWorld(new THREE.Vector3(0, 0.2, 0));
+  const target = kid.head.localToWorld(HAT_ON_HEAD.pos.clone());
   hat.group.position.lerpVectors(G.flightFrom, target, e);
-  hat.group.position.y += Math.sin(Math.PI * k) * 1.6;
+  hat.group.position.y += Math.sin(Math.PI * k) * 1.4;
   hat.group.rotation.y = lerp(G.flightYaw, Math.PI * 2 + kid.root.rotation.y, e);
-  hat.group.scale.setScalar(lerp(1, 0.78, e));
+  hat.group.scale.setScalar(lerp(1, HAT_ON_HEAD.scale, e));
+  // 頭にのる直前から、下半分が内側へ押しこまれていく
+  hat.state.worn = clamp((k - 0.6) / 0.4, 0, 1);
   if (k >= 1) {
     kid.head.attach(hat.group);
-    hat.group.position.set(0, 0.2, 0);
+    hat.group.position.copy(HAT_ON_HEAD.pos);
     hat.group.rotation.set(0, 0, 0);
-    hat.group.scale.setScalar(0.78);
+    hat.group.scale.setScalar(HAT_ON_HEAD.scale);
     computeResult();
     sfx.phaseEnd(true);
     moveCamera(VIEWS.kid, 1.3);
@@ -666,17 +684,16 @@ function frame() {
 
   switch (G.mode) {
     case 'title':
-      hat.group.rotation.y = -Math.PI / 2 + Math.sin(t * 0.8) * 0.4;
+      hat.group.rotation.y = HAT_YAW + Math.sin(t * 0.8) * 0.4;
       break;
     case 'intro':
       if (G.modeT > 1.0) setMode('play');
-      if (PHASES[G.phase].key === 'put') {
-        updateKidEnter(dt);
-        hat.group.position.z += (0.6 - hat.group.position.z) * (1 - Math.exp(-dt * 5));
-      }
+      holdHat(dt);
+      if (PHASES[G.phase].key === 'put') updateKidEnter(dt);
       break;
     case 'play':
       updatePlay(dt, t);
+      holdHat(dt);
       if (PHASES[G.phase].key === 'put') updateKidEnter(dt);
       break;
     case 'phaseEnd':
@@ -717,6 +734,12 @@ function frame() {
   requestAnimationFrame(frame);
 }
 
+// 両手でもち上げた帽子を、ステップごとの位置へ
+function holdHat(dt) {
+  const target = HAT_POS[PHASES[G.phase].key];
+  hat.group.position.lerp(target, 1 - Math.exp(-dt * 4));
+}
+
 function updateKidEnter(dt) {
   // 右からかけよってくる
   const x = kid.root.position.x;
@@ -736,7 +759,7 @@ function renderSample(t) {
   const y = window.innerHeight - r.bottom + b;
   const w = r.width - b * 2;
   const h = r.height - b * 2;
-  sampleHat.group.rotation.y = -Math.PI / 2 + Math.sin(t * 0.9) * 0.7;
+  sampleHat.group.rotation.y = HAT_YAW + Math.sin(t * 0.9) * 0.4;
   sampleCam.aspect = w / h;
   sampleCam.updateProjectionMatrix();
   renderer.setScissorTest(true);

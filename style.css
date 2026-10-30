@@ -97,10 +97,6 @@ html, body {
 }
 #hints .hint.L { left: 14%; }
 #hints .hint.R { right: 14%; }
-#hints.up .hint { --dx: 0px; --dy: -18px; }
-#hints.down .hint { --dx: 0px; --dy: 18px; }
-#hints.inward .hint.L { --dx: 18px; --dy: 0px; }
-#hints.inward .hint.R { --dx: -18px; --dy: 0px; }
 @keyframes nudge {
   0% { transform: translate(0, 0); opacity: 0.2; }
   60% { opacity: 1; }
