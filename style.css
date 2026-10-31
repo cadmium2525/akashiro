@@ -180,6 +180,7 @@ html, body {
   line-height: 1.15;
 }
 #banner.low { top: auto; bottom: 14%; }
+#banner.kusha { top: 24%; font-size: clamp(24px, 8vw, 40px); }
 #banner.red { color: var(--red); -webkit-text-stroke: 2px #fff; text-shadow: 0 4px 0 var(--ink); }
 #banner small { display: block; font-size: 0.45em; -webkit-text-stroke: 1px var(--ink); }
 @keyframes pop { from { transform: scale(0.3); opacity: 0; } to { transform: scale(1); opacity: 1; } }

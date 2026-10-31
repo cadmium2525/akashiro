@@ -201,7 +201,9 @@ const G = {
   phase: 0,
   timer: 0,
   scores: [0, 0, 0],
-  crumple: 0,
+  crumple: { pull: 0, brim: 0 }, // しわしわ減点（ステップごと）
+  prevVal: 0,
+  lastKusha: 0,
   putAcc: 0,
   baseWrinkle: 0.3,
   seed: 0,
@@ -217,7 +219,7 @@ function setMode(m) {
 function resetGame() {
   G.phase = 0;
   G.scores = [0, 0, 0];
-  G.crumple = 0;
+  G.crumple = { pull: 0, brim: 0 };
   G.putAcc = 0;
   G.seed = Math.random() * 100;
   G.baseWrinkle = 0.25 + Math.random() * 0.15;
@@ -275,6 +277,7 @@ function startPhase(i) {
     el.style.setProperty('--dy', `${hy * 18}px`);
   }
   $('okBtn').textContent = ph.key === 'put' ? 'かぶせる！' : 'できた！';
+  if (CRUMPLE_WATCH[ph.key]) G.prevVal = hat.state[CRUMPLE_WATCH[ph.key]];
   buildGauges();
   if (ph.key === 'put') {
     kid.root.visible = true;
@@ -354,6 +357,8 @@ function updateGauges() {
     let st = good ? 'いい感じ！' : '';
     if (!good && g.d.warn && v > g.d.target + g.d.half * 2.5) st = g.d.warn;
     if (g.d.danger && v > g.d.danger - 0.12) st = 'あぶない！';
+    const cr = G.crumple[PHASES[G.phase].key];
+    if (g.d.warn && cr > 0.005) st = `しわしわ −${Math.round(Math.min(0.35, cr) * 100)}%（もどすと消える）`;
     g.st.textContent = st;
   }
 }
@@ -396,7 +401,7 @@ function onDrag(side, dx, dy) {
     const outward = dx * side;
     s.pull = clamp(s.pull + outward * 2.0 * k, 0, 1.5);
     s.skew = clamp(s.skew + outward * 1.2 * k * side, -0.8, 0.8);
-    if (s.pull > 1.2 && outward > 0) G.crumple += outward * 0.3;
+    if (s.pull > 1.2 && outward > 0) addCrumple('pull', outward * 0.3);
     if (Math.abs(dx) > 0.003) sfx.swipe(s.pull * 0.4);
   } else if (key === 'turn') {
     s.tip = clamp(s.tip - dy * 2.2 * k, -0.3, 1.6);
@@ -406,11 +411,26 @@ function onDrag(side, dx, dy) {
     const inward = dx * -side;
     s.pinch = clamp(s.pinch + inward * 2.2 * k, 0, 1.6);
     s.lean = clamp(s.lean + inward * 1.4 * k * -side, -0.8, 0.8);
-    if (s.pinch > 1.2 && inward > 0) G.crumple += inward * 0.35;
+    if (s.pinch > 1.2 && inward > 0) addCrumple('brim', inward * 0.35);
     if (Math.abs(dx) > 0.003) sfx.swipe(s.pinch * 0.4);
   } else if (key === 'put') {
     G.putAcc += -dy;
     if (G.putAcc > 0.12) putHat();
+  }
+}
+
+// しわしわ減点：行き過ぎた状態でさらに動かすとたまり、ゲージを戻すと減る
+const CRUMPLE_WATCH = { pull: 'pull', brim: 'pinch' };
+const crumpleTotal = () => G.crumple.pull + G.crumple.brim;
+const crumplePenalty = () => Math.min(0.35, crumpleTotal());
+function addCrumple(key, amount) {
+  G.crumple[key] += amount;
+  const now = performance.now();
+  if (now - G.lastKusha > 1200) {
+    G.lastKusha = now;
+    showBanner('くしゃっ！', 'red kusha', 700);
+    sfx.crumple();
+    if (navigator.vibrate) navigator.vibrate(30);
   }
 }
 
@@ -447,7 +467,7 @@ function putHat() {
 
 function computeResult() {
   const avg = (G.scores[0] + G.scores[1] + G.scores[2]) / 3;
-  const penalty = Math.min(0.35, G.crumple);
+  const penalty = crumplePenalty();
   G.total = Math.round(avg * 100 * (1 - penalty));
   G.rank = RANKS.find((r) => G.total >= r.min);
 }
@@ -465,7 +485,7 @@ function showResult() {
   let html = items.map(([n, v]) => `
     <div class="item"><span>${n}</span><div class="bar"><i style="width:${Math.round(v * 100)}%"></i></div><span>${Math.round(v * 100)}</span></div>`).join('');
   const notes = [];
-  if (G.crumple > 0.02) notes.push(`しわしわ −${Math.round(Math.min(0.35, G.crumple) * 100)}%`);
+  if (crumplePenalty() > 0.02) notes.push(`しわしわ −${Math.round(crumplePenalty() * 100)}%`);
   if (notes.length) html += `<div class="note">${notes.join('　')}</div>`;
   $('breakdown').innerHTML = html;
   $('result').classList.remove('hidden');
@@ -562,7 +582,15 @@ function updatePlay(dt, t) {
     s.lean = clamp(s.lean + d.wobble * noise(t, G.seed + 5) * dt * 0.35, -0.8, 0.8);
   }
   // しわ：つまむほどのびる。のばしすぎ・つまみすぎの「くしゃっ」は残る
-  s.wrinkle = G.baseWrinkle * (1 - clamp(s.pinch, 0, 1) * 0.85) + Math.min(0.6, G.crumple);
+  // しわしわ減点は、ゲージを戻した分だけ減る（布がのびて元にもどる）
+  const watch = CRUMPLE_WATCH[key];
+  if (watch) {
+    const v = s[watch];
+    const d = v - G.prevVal;
+    G.prevVal = v;
+    if (d < 0 && G.crumple[key] > 0) G.crumple[key] = Math.max(0, G.crumple[key] + d * 0.7);
+  }
+  s.wrinkle = G.baseWrinkle * (1 - clamp(s.pinch, 0, 1) * 0.85) + Math.min(0.6, crumpleTotal());
 
   const before = G.timer;
   G.timer -= dt;

@@ -47,6 +47,10 @@ export const sfx = {
     lastSwipe = ctx.currentTime;
     tone(380 + pitch * 500 + Math.random() * 60, 0.06, { type: 'triangle', vol: 0.05 });
   },
+  crumple() {
+    noise(0.09, 0.25);
+    tone(260, 0.1, { type: 'triangle', vol: 0.06, slide: -120 });
+  },
   snap() {
     noise(0.12, 0.5);
     tone(900, 0.12, { type: 'square', vol: 0.08, slide: -700 });
