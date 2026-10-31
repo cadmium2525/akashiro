@@ -256,7 +256,40 @@ html, body {
 
 #result { align-items: flex-end; background: transparent; }
 #result .card { padding: 14px 16px; }
-#result .diffs { grid-template-columns: 1fr 1fr; margin-top: 12px; }
+#shareBtn {
+  display: block;
+  width: 100%;
+  margin-top: 12px;
+  font-family: var(--font);
+  font-weight: 800;
+  font-size: 17px;
+  padding: 11px;
+  border-radius: 14px;
+  border: 3px solid var(--ink);
+  background: #ffd23f;
+  color: var(--ink);
+  box-shadow: 0 4px 0 var(--ink);
+}
+#shareBtn:disabled { opacity: 0.6; }
+#shareBtn:active:not(:disabled) { transform: translateY(3px); box-shadow: 0 1px 0 var(--ink); }
+#result .diffs { grid-template-columns: 1fr 1fr; margin-top: 10px; }
+
+#toast {
+  position: fixed;
+  left: 16px;
+  right: 16px;
+  top: calc(env(safe-area-inset-top) + 16px);
+  z-index: 10;
+  padding: 10px 14px;
+  border-radius: 12px;
+  background: var(--ink);
+  color: #fff;
+  font-size: 14px;
+  font-weight: 800;
+  line-height: 1.5;
+  text-align: center;
+  pointer-events: none;
+}
 #result .diffs button { font-size: 15px; padding: 10px 6px; }
 
 #rank {

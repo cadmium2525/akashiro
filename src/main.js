@@ -3,6 +3,7 @@ import { createHat, IDEAL } from './hat.js';
 import { createKid } from './kid.js';
 import { createHand } from './hands.js';
 import { sfx, initAudio } from './audio.js';
+import { createShare } from './share.js';
 
 // ---------------------------------------------------------------------------
 // むずかしさ設定
@@ -57,10 +58,10 @@ const HAT_POS = {
 };
 
 const RANKS = [
-  { min: 85, rank: 'S', pose: 'specium', name: '完ぺきウルトラマン', shout: 'シュワッチ!!', sub: 'スペシウム光線！' },
-  { min: 65, rank: 'A', pose: 'shuwatch', name: 'ほぼウルトラマン', shout: 'シュワッチ！', sub: 'ウルトラマンっぽい！' },
-  { min: 40, rank: 'B', pose: 'ehehe', name: 'ウルトラマン見習い', shout: 'えへへ…', sub: 'ウルトラマン…かな？' },
-  { min: 0, rank: 'C', pose: 'sad', name: 'ただの赤白帽', shout: 'これ…なに…？', sub: 'ただの帽子だよ…' },
+  { min: 85, rank: 'S', pose: 'specium', name: '完ぺきウルトラマン', shout: 'シュワッチ!!', sub: 'スペシウム光線！', lead: '赤白帽子でウルトラマンをつくったよ！' },
+  { min: 65, rank: 'A', pose: 'shuwatch', name: 'ほぼウルトラマン', shout: 'シュワッチ！', sub: 'ウルトラマンっぽい！', lead: '赤白帽子でウルトラマンをつくったよ！' },
+  { min: 40, rank: 'B', pose: 'ehehe', name: 'ウルトラマン見習い', shout: 'えへへ…', sub: 'ウルトラマン…かな？', lead: '赤白帽子でウルトラマンをつくってみたよ…' },
+  { min: 0, rank: 'C', pose: 'sad', name: 'ただの赤白帽', shout: 'これ…なに…？', sub: 'ただの帽子だよ…', lead: '赤白帽子でウルトラマンをつくろうとしたよ…' },
 ];
 
 const clamp = (v, a, b) => Math.min(b, Math.max(a, v));
@@ -138,6 +139,12 @@ const VIEWS = {
   kid: { pos: new THREE.Vector3(1.3, 1.2, 3.4), look: new THREE.Vector3(-0.2, 0.0, -2.6), halfW: 2.3, minFov: 42 },
   result: { pos: new THREE.Vector3(1.3, 1.2, 3.4), look: new THREE.Vector3(-0.2, -1.7, -2.6), halfW: 2.6, minFov: 50 },
 };
+// シェア画像用のカメラ（縦長4:5。下側はカードを重ねるので、小学生は少し上に寄せる）
+const SHARE_VIEW = {
+  pos: new THREE.Vector3(1.3, 1.2, 3.4), look: new THREE.Vector3(-0.2, -0.1, -2.6), halfW: 3.1, minFov: 40,
+};
+const share = createShare({ renderer, scene, camera, view: SHARE_VIEW });
+
 const cam = {
   from: VIEWS.table, to: VIEWS.table, t: 1, dur: 1,
   pos: new THREE.Vector3(), look: new THREE.Vector3(), shake: 0,
@@ -244,6 +251,7 @@ function startGame(diffKey) {
   G.diffKey = diffKey;
   G.diff = DIFFS[diffKey];
   resetGame();
+  share.reset();
   $('title').classList.add('hidden');
   $('result').classList.add('hidden');
   sfx.start();
@@ -461,13 +469,46 @@ function showResult() {
   if (notes.length) html += `<div class="note">${notes.join('　')}</div>`;
   $('breakdown').innerHTML = html;
   $('result').classList.remove('hidden');
+  prepareShare();
 }
+
+// ---------------------------------------------------------------------------
+// シェア（ボタンは1つ。画像＋投稿文を共有シートに渡す）
+// ---------------------------------------------------------------------------
+function prepareShare() {
+  const btn = $('shareBtn');
+  btn.disabled = true;
+  btn.textContent = 'じゅんびちゅう…';
+  const r = G.rank;
+  share.prepare({ lead: r.lead, rank: r.rank, name: r.name, total: G.total, diffName: G.diff.name })
+    .finally(() => {
+      btn.disabled = false;
+      btn.textContent = 'シェアする';
+    });
+}
+
+let toastTimer = 0;
+function showToast(msg, ms = 3500) {
+  const t = $('toast');
+  t.textContent = msg;
+  t.classList.remove('hidden');
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => t.classList.add('hidden'), ms);
+}
+
+$('shareBtn').addEventListener('click', async () => {
+  const btn = $('shareBtn');
+  if (btn.disabled) return;
+  const res = await share.share();
+  if (res === 'saved') showToast('画像を保存して、投稿文をコピーしました。SNSに貼りつけて投稿してね！');
+});
 
 $('title').querySelectorAll('button[data-diff]').forEach((b) => {
   b.addEventListener('click', () => startGame(b.dataset.diff));
 });
 $('retryBtn').addEventListener('click', () => startGame(G.diffKey));
 $('menuBtn').addEventListener('click', () => {
+  share.reset();
   $('result').classList.add('hidden');
   $('title').classList.remove('hidden');
   resetGame();
@@ -863,4 +904,4 @@ resetGame();
 requestAnimationFrame(frame);
 
 // デバッグ・テスト用
-window.__game = { G, hat, kid, startGame, putHat, endPhase, PHASES };
+window.__game = { G, hat, kid, startGame, putHat, endPhase, PHASES, share };
